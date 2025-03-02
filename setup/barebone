@@ -38,7 +38,6 @@ packages=(
   man-db
   neovim
   pacman-contrib
-  yay-bin
   python
   rsync
   sudo
