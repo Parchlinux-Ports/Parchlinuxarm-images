@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Creates an Arch Linux ARM image e.g. for installation to an SD card
+# Enhanced for ParchLinux ARM with automatic base profile inclusion
 # Adapted from https://github.com/andrewboring/alarm-images/blob/master/scripts/create-image
 
 # Set up script error handling see https://disconnected.systems/blog/another-bash-strict-mode for details
@@ -17,16 +18,25 @@ fi
 # Some useful constants
 mount="mnt" # Local directory to mount the image (automatically created/delete as needed)
 base_url="http://archlinuxarm.org/os"
+script_dir="$(dirname "$(readlink -f "$0")")"
 
 # Grab the first two arguments, using the defaults if not set
 # For example, to create a 4 gig image called archlinux-rpi-armv7.img
-# that automatically runs ./setup1 and ./setup2 inside the new root, use:
+# that automatically runs ./setup/base, ./setup/rpi-aarch64 and ./setup/xfce inside the new root, use:
 #
-#   ./create-image 4G rpi-armv7 ./setup1 ./setup2
+#   ./create-image 4G rpi-aarch64 ./setup/xfce
 #
+# Note: The base profile is ALWAYS included automatically
 
 if [ $# -lt 2 ]; then
-  echo "Usage: $0 <size> <arch> <setup scripts...>"
+  echo "Usage: $0 <size> <arch> [setup scripts...]"
+  echo ""
+  echo "The base profile (setup/base) is automatically included for all builds."
+  echo ""
+  echo "Examples:"
+  echo "  $0 9G aarch64 setup/barebone"
+  echo "  $0 9G rpi-aarch64 setup/xfce"
+  echo "  $0 9G aarch64 setup/plasma"
   exit 1
 fi
 
@@ -39,38 +49,98 @@ shift
 file="ArchLinuxARM-${arch}-latest.tar.gz"
 image="archlinux-${arch}.img"
 
-# Local setup script to run inside the image
-script_sources=("$@")
+# Check if base profile exists
+base_profile="${script_dir}/setup/base"
+if [ ! -f "${base_profile}" ]; then
+  echo "ERROR: Base profile not found at ${base_profile}" 1>&2
+  echo "The base profile is required for all builds." 1>&2
+  exit 1
+fi
+
+# Setup script handling
+# ALWAYS include base profile first, then architecture-specific, then user-provided scripts
+script_sources=()
 script_destdir="/setup-scripts"
 loopdev=
+
+# 1. Always add base profile first
+echo "==> Base profile will be applied: ${base_profile}"
+script_sources+=("${base_profile}")
+
+# 2. Check for architecture-specific setup (e.g., setup/aarch64 or setup/rpi-aarch64)
+arch_setup="${script_dir}/setup/${arch}"
+if [ -f "${arch_setup}" ]; then
+  echo "==> Architecture-specific setup found: ${arch_setup}"
+  script_sources+=("${arch_setup}")
+fi
+
+# 3. Add user-provided scripts
+if [ $# -gt 0 ]; then
+  echo "==> Additional setup scripts provided:"
+  for script in "$@"; do
+    if [ -f "${script}" ]; then
+      echo "    - ${script}"
+      script_sources+=("${script}")
+    else
+      echo "WARNING: Script not found, skipping: ${script}" 1>&2
+    fi
+  done
+fi
+
+# Display build plan
+echo ""
+echo "╔════════════════════════════════════════════════════════════╗"
+echo "║           ParchLinux ARM Image Builder                     ║"
+echo "╠════════════════════════════════════════════════════════════╣"
+echo "║ Architecture: ${arch}"
+echo "║ Image Size:   ${size}"
+echo "║ Setup Order:"
+for i in "${!script_sources[@]}"; do
+  script_name=$(basename "${script_sources[$i]}")
+  echo "║   $((i+1)). ${script_name}"
+done
+echo "╚════════════════════════════════════════════════════════════╝"
+echo ""
 
 # Tasks to run when the shell exits for any reason, unmount the image and
 # general cleanup
 cleanup() {
+  echo "==> Cleaning up..."
   rm -rf "${mount}${script_destdir}"
   if [[ -d "${mount}" ]]; then
-    umount -R "${mount}" || true
-    rmdir "${mount}" || true
+    umount -R "${mount}" 2>/dev/null || true
+    rmdir "${mount}" 2>/dev/null || true
   fi
-  [ -n "${loopdev}" ] && losetup --detach "${loopdev}" || true
+  [ -n "${loopdev}" ] && losetup --detach "${loopdev}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
 echo "==> Downloading Arch Linux ARM tarball (${file})..."
 [ ! -f "${file}" ] && aria2c "${base_url}/${file}"
 
-echo "==> Creating image..."
+echo "==> Creating image file (${size})..."
 dd if=/dev/zero of="${image}" bs=1 seek="${size}" count=0
+
+echo "==> Setting up loop device..."
 loopdev=$(losetup --find --show "${image}")
+echo "    Using loop device: ${loopdev}"
 
 echo "==> Partitioning image..."
 parted --script "${loopdev}" mklabel msdos
-parted --script "${loopdev}" mkpart primary fat32 0%  1024M
+parted --script "${loopdev}" mkpart primary fat32 0% 1024M
 parted --script "${loopdev}" mkpart primary ext4 1024M 100%
 
-echo "==> Formatting image..."
+echo "==> Formatting partitions..."
+# Force re-read partition table
+partprobe "${loopdev}" || true
+sleep 2
+
 bootdev=$(ls "${loopdev}"*1)
 rootdev=$(ls "${loopdev}"*2)
+
+echo "    Boot partition: ${bootdev}"
+echo "    Root partition: ${rootdev}"
+
 mkfs.vfat -F32 ${bootdev}
 mkfs.ext4 -F ${rootdev}
 
@@ -84,7 +154,11 @@ echo "==> Installing Arch Linux ARM root tree to image..."
 tar -xpf "${file}" -C "${mount}" 2> >(grep -v "Ignoring unknown extended header keyword")
 
 echo "==> Installing overlay tree to image..."
-rsync -rlDvP "$(dirname $0)/overlay/" "${mount}/"
+if [ -d "${script_dir}/overlay" ]; then
+  rsync -rlDvP "${script_dir}/overlay/" "${mount}/"
+else
+  echo "    (No overlay directory found, skipping)"
+fi
 
 echo "==> Setting up pacman keyring..."
 cat <<EOF | arch-chroot "${mount}"
@@ -97,24 +171,77 @@ cat <<EOF | arch-chroot "${mount}"
 systemctl enable expand-rootfs
 EOF
 
-echo "==> Setting up setup scripts dir..."
-mkdir "${mount}${script_destdir}"
+echo "==> Setting up setup scripts directory..."
+mkdir -p "${mount}${script_destdir}"
 
 # Run setup scripts inside new root
+echo ""
+echo "╔════════════════════════════════════════════════════════════╗"
+echo "║           Executing Setup Scripts                          ║"
+echo "╚════════════════════════════════════════════════════════════╝"
+echo ""
+
+script_num=1
+total_scripts=${#script_sources[@]}
+
 for script in "${script_sources[@]}"; do
-  script_dest="${script_destdir}/$(basename "$script")"
+  script_name=$(basename "${script}")
+  script_dest="${script_destdir}/${script_name}"
 
-  echo "==> Installing $script to $script_dest in new root..."
-  install -Dm755 "$script" "${mount}${script_dest}"
+  echo "┌────────────────────────────────────────────────────────────┐"
+  echo "│ [${script_num}/${total_scripts}] Executing: ${script_name}"
+  echo "└────────────────────────────────────────────────────────────┘"
 
-  echo "==> Running $script_dest..."
-  arch-chroot "${mount}" "${script_dest}"
+  echo "==> Installing ${script} to ${script_dest} in new root..."
+  install -Dm755 "${script}" "${mount}${script_dest}"
 
-  echo "==> Removing $script_dest from new root..."
+  echo "==> Running ${script_dest}..."
+  if arch-chroot "${mount}" "${script_dest}"; then
+    echo "✓ ${script_name} completed successfully"
+  else
+    echo "✗ ${script_name} failed with exit code $?" 1>&2
+    exit 1
+  fi
+
+  echo "==> Removing ${script_dest} from new root..."
   rm "${mount}${script_dest}"
+  
+  echo ""
+  script_num=$((script_num + 1))
 done
+
+echo "╔════════════════════════════════════════════════════════════╗"
+echo "║           All Setup Scripts Completed                      ║"
+echo "╚════════════════════════════════════════════════════════════╝"
+echo ""
 
 echo "==> Cleaning pacman cache..."
 cat <<EOF | arch-chroot "${mount}"
 yes | pacman -Scc
 EOF
+
+echo "==> Final cleanup inside image..."
+cat <<EOF | arch-chroot "${mount}"
+# Remove any leftover package files
+rm -rf /var/cache/pacman/pkg/*
+# Clean temporary files
+rm -rf /tmp/*
+rm -rf /var/tmp/*
+# Remove any logs
+rm -rf /var/log/*
+EOF
+
+echo ""
+echo "╔════════════════════════════════════════════════════════════╗"
+echo "║           Image Build Completed Successfully!              ║"
+echo "╠════════════════════════════════════════════════════════════╣"
+echo "║ Output: ${image}"
+echo "║ Size:   ${size}"
+echo "║ Arch:   ${arch}"
+echo "╚════════════════════════════════════════════════════════════╝"
+echo ""
+echo "Next steps:"
+echo "  1. Compress: zip ${image}.zip ${image}"
+echo "  2. Flash:    sudo dd if=${image} of=/dev/sdX bs=4M status=progress"
+echo "  3. Login:    ssh parch@parchlinux.local (password: parch)"
+echo ""

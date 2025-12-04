@@ -1,78 +1,153 @@
 #!/bin/bash
+# Trinity profile - Trinity Desktop Environment (KDE3 fork)
+# Inherits from base profile
 
 set -uo pipefail
 
-# Configure system locale to en_US.UTF-8
-sed -i 's/#\(en_US.UTF-8 UTF-8\)/\1/g' /etc/locale.gen
-locale-gen
-echo 'LANG=en_US.UTF-8' > /etc/locale.conf
+echo "==> Applying Trinity profile configuration..."
 
+# Import Trinity repository key
+echo "==> Importing Trinity repository keys..."
+pacman-key --recv-keys 0x8685AD8B 2>/dev/null || true
+pacman-key --lsign-key 0x8685AD8B 2>/dev/null || true
 
-# Fix Pacman.conf
-rm -f /etc/pacman.conf
-curl https://raw.githubusercontent.com/parchlinux-ports/Parchlinuxarm-images/main/examples/pacman.conf.example >> /etc/pacman.conf
-
-# Enable Sudo
-sudo sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
-
-pacman-key --recv-keys 0x8685AD8B
-
-# Add archsink repo
-cat <<EOF >> /etc/pacman.conf
+# Add Trinity repository if not already present
+if ! grep -q "\[trinity\]" /etc/pacman.conf; then
+  echo "==> Adding Trinity repository..."
+  cat <<'EOF' >> /etc/pacman.conf
 
 [trinity]
-Server = https://mirror.ppa.trinitydesktop.org/trinity/archlinux/\$arch
+Server = https://mirror.ppa.trinitydesktop.org/trinity/archlinux/$arch
 SigLevel = Never
+EOF
+fi
 
+# Update package database
+echo "==> Updating package database..."
+pacman -Sy
+
+# Trinity Desktop packages
+trinity_packages=(
+  # Trinity Desktop Environment
+  tde-tdebase
+  tde-tdelibs
+  tde-tdeartwork
+  tde-tdegraphics
+  tde-tdemultimedia
+  tde-tdenetwork
+  tde-tdepim
+  tde-tdetoys
+  tde-tdeutils
+  tde-tdewebdev
+  
+  # Display Manager
+  sddm
+  
+  # Essential applications
+  firefox
+  thunderbird
+  
+  # Media players
+  vlc
+  
+  # Office suite
+  libreoffice-fresh
+  
+  # Graphics
+  gimp
+  inkscape
+  
+  # Archive support
+  p7zip
+  unrar
+  file-roller
+  
+  # PDF viewer
+  evince
+  
+  # System tools
+  gparted
+  gnome-disk-utility
+  
+  # Fonts
+  ttf-dejavu
+  ttf-liberation
+  noto-fonts-emoji
+)
+
+echo "==> Installing Trinity Desktop packages..."
+pacman -S --noconfirm --needed "${trinity_packages[@]}"
+
+# Enable display manager
+echo "==> Enabling SDDM display manager..."
+systemctl enable sddm
+
+# Configure SDDM for Trinity
+echo "==> Configuring SDDM..."
+mkdir -p /etc/sddm.conf.d/
+cat <<'EOF' > /etc/sddm.conf.d/trinity.conf
+[Theme]
+Current=breeze
+
+[Users]
+MaximumUid=60000
+MinimumUid=1000
+
+[X11]
+SessionDir=/usr/share/xsessions
 EOF
 
-# Enable parallel downloads
-sed -i 's/#\(ParallelDownloads \)/\1/g' /etc/pacman.conf
+# Set default session for parch user
+mkdir -p /var/lib/AccountsService/users/
+cat <<'EOF' > /var/lib/AccountsService/users/parch
+[User]
+Session=trinity
+Icon=/var/lib/AccountsService/icons/parch
+SystemAccount=false
+EOF
 
-# Install useful packages
-packages=(
-  parch-branding
-  vazirmatn-fonts
-  parch-emoji-ios
-  arch-install-scripts
-  avahi
-  curl
-  git
-  htop
-  btop
-  iwd
-  man-db
-  neovim
-  pacman-contrib
-  yay-bin
-  python
-  rsync
-  sudo
-  tmux
-  tree
-  neofetch-git
-  zsh
-  vim
-  tde-tdebase
-  sddm
-  networkmanager
-  network-manager-applet
-  fastfetch
-  pipewire
-  pipewire-pulse
-  pipewire-alsa
-  wireplumber
-  bluez
-  bluez-utils
-)
-pacman -Syu --noconfirm --needed "${packages[@]}"
+# Create Trinity configuration directory
+mkdir -p /home/parch/.trinity/share/config/
 
-# Enable services
-systemctl enable avahi-daemon NetworkManager
-systemctl enable sddm
-systemctl enable bluetooth
-# Prepare system for containers (e.g. for use with K3s)
-# https://github.com/k3s-io/k3s/issues/2067#issuecomment-664048424
-#if ! grep -q cgroup /boot/cmdline.txt; then
-#  sed -i '$ s/$/ cgroup_memory=1 cgroup_enable=memory/g' /boot/cmdline.txt
-#fi
+# Configure Trinity defaults
+cat <<'EOF' > /home/parch/.trinity/share/config/kdeglobals
+[General]
+widgetStyle=plastik
+
+[KDE]
+ShowIconsOnPushButtons=true
+contrast=7
+EOF
+
+# Set proper ownership
+chown -R parch:parch /home/parch/.trinity
+
+# Create welcome message for Trinity
+cat <<'EOF' > /home/parch/.trinity-welcome
+Welcome to Trinity Desktop Environment!
+
+Trinity is a continuation of KDE 3.5 with modern enhancements.
+This environment provides a classic desktop experience with
+modern functionality and stability.
+
+Key features:
+- Classic KDE 3.5 interface
+- Modern hardware support
+- Lightweight and fast
+- Familiar workflow
+
+Default applications:
+- Konqueror: File manager and web browser
+- Konsole: Terminal emulator
+- KMail: Email client
+- Kate: Text editor
+
+For more information, visit: https://www.trinitydesktop.org/
+EOF
+
+chown parch:parch /home/parch/.trinity-welcome
+
+echo "==> Trinity profile configuration completed!"
+echo "==> Desktop environment: Trinity Desktop (KDE 3.5 fork)"
+echo "==> Display manager: SDDM"
+echo "==> A classic desktop experience awaits!"

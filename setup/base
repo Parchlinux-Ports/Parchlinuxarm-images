@@ -1,0 +1,304 @@
+#!/bin/bash
+# Base profile - All other profiles inherit from this
+
+set -uo pipefail
+
+echo "==> Applying base ParchLinux ARM configuration..."
+
+# ============================================
+# 1. REMOVE DEFAULT ALARM USER
+# ============================================
+echo "==> Removing default alarm user..."
+userdel -r alarm 2>/dev/null || true
+
+# ============================================
+# 2. CREATE PARCH USER
+# ============================================
+echo "==> Creating parch user..."
+useradd -m -G wheel,audio,video,optical,storage,power,input -s /bin/zsh parch
+echo "parch:parch" | chpasswd
+
+# ============================================
+# 3. CONFIGURE SUDO
+# ============================================
+echo "==> Configuring sudo..."
+sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+sed -i 's/^# %wheel ALL=(ALL:ALL) NOPASSWD: ALL/%wheel ALL=(ALL:ALL) NOPASSWD: ALL/' /etc/sudoers
+
+# ============================================
+# 4. SYSTEM LOCALE
+# ============================================
+echo "==> Configuring system locale..."
+sed -i 's/#\(en_US.UTF-8 UTF-8\)/\1/g' /etc/locale.gen
+locale-gen
+echo 'LANG=en_US.UTF-8' > /etc/locale.conf
+
+# ============================================
+# 5. ENHANCED PACMAN CONFIGURATION
+# ============================================
+echo "==> Configuring pacman with enhanced repositories..."
+cat <<'EOF' > /etc/pacman.conf
+#
+# /etc/pacman.conf - ParchLinux ARM
+#
+[options]
+HoldPkg     = pacman glibc
+Architecture = aarch64
+
+# Misc options
+Color
+CheckSpace
+VerbosePkgLists
+ParallelDownloads = 5
+ILoveCandy
+
+SigLevel    = Required DatabaseOptional
+LocalFileSigLevel = Optional
+
+#
+# REPOSITORIES
+#
+
+# ParchLinux Primary Repository
+[ppr]
+Server = https://raw.githubusercontent.com/parchlinux-arm/ppr/main/aarch64/
+SigLevel = Never
+
+# ArchSink Repository
+[archsink]
+Server = https://github.com/archsink/$arch/releases/latest/download
+SigLevel = Never
+
+# DanctnixOS Repository (Mobile/ARM devices)
+[danctnix]
+Server = https://p64.arikawa-hi.me/$repo/$arch/
+SigLevel = Never
+
+# Arch Linux CN Community Repository
+[archlinuxcn]
+Server = https://repo.archlinuxcn.org/aarch64
+SigLevel = Never
+
+# Arch Linux ARM Official Repositories
+[core]
+Server = http://mirror.archlinuxarm.org/$arch/$repo
+SigLevel = Never
+
+[extra]
+Server = http://mirror.archlinuxarm.org/$arch/$repo
+SigLevel = Never
+
+[community]
+Server = http://mirror.archlinuxarm.org/$arch/$repo
+SigLevel = Never
+
+[alarm]
+Server = http://mirror.archlinuxarm.org/$arch/$repo
+SigLevel = Never
+
+[aur]
+Server = http://mirror.archlinuxarm.org/$arch/$repo
+SigLevel = Never
+EOF
+
+# ============================================
+# 6. INSTALL BASE PACKAGES
+# ============================================
+echo "==> Installing base packages..."
+base_packages=(
+  # System essentials
+  base-devel
+  arch-install-scripts
+  
+  # ParchLinux branding
+  parch-branding
+  vazirmatn-fonts
+  noto-fonts
+  parch-emoji-ios
+  
+  # Networking
+  avahi
+  networkmanager
+  network-manager-applet
+  iwd
+  
+  # System utilities
+  curl
+  wget
+  git
+  rsync
+  sudo
+  
+  # System monitoring
+  htop
+  btop
+  fastfetch
+  neofetch-git
+  
+  # Text editors
+  vim
+  neovim
+  nano
+  
+  # Shell and terminal
+  zsh
+  zsh-completions
+  zsh-syntax-highlighting
+  zsh-autosuggestions
+  tmux
+  
+  # Package management
+  pacman-contrib
+  yay-bin
+  
+  # Python
+  python
+  python-pip
+  
+  # Utilities
+  man-db
+  tree
+  unzip
+  p7zip
+  
+  # Audio (pipewire)
+  pipewire
+  pipewire-pulse
+  pipewire-alsa
+  pipewire-jack
+  wireplumber
+  
+  # Bluetooth
+  bluez
+  bluez-utils
+)
+
+pacman -Syu --noconfirm --needed "${base_packages[@]}"
+
+# ============================================
+# 7. CONFIGURE ZSH FOR PARCH USER
+# ============================================
+echo "==> Configuring ZSH for parch user..."
+cat <<'EOF' > /home/parch/.zshrc
+# ParchLinux ARM - ZSH Configuration
+
+# Enable colors
+autoload -Uz colors && colors
+
+# History configuration
+HISTFILE=~/.zsh_history
+HISTSIZE=10000
+SAVEHIST=10000
+setopt SHARE_HISTORY
+setopt HIST_IGNORE_DUPS
+setopt HIST_IGNORE_ALL_DUPS
+
+# Auto completion
+autoload -Uz compinit
+compinit
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+
+# Load plugins
+source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh 2>/dev/null
+source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh 2>/dev/null
+
+# Prompt
+PROMPT='%F{cyan}%n@%m%f %F{blue}%~%f %# '
+
+# Aliases
+alias ls='ls --color=auto'
+alias ll='ls -lah'
+alias la='ls -A'
+alias grep='grep --color=auto'
+alias update='sudo pacman -Syu'
+alias install='sudo pacman -S'
+alias remove='sudo pacman -Rns'
+alias search='pacman -Ss'
+alias clean='sudo pacman -Sc'
+alias orphans='sudo pacman -Rns $(pacman -Qtdq)'
+
+# System aliases
+alias reboot='sudo systemctl reboot'
+alias poweroff='sudo systemctl poweroff'
+alias suspend='sudo systemctl suspend'
+
+# Quick info
+alias info='fastfetch'
+alias sysinfo='neofetch'
+
+# Welcome message on first login
+if [ ! -f ~/.config/.welcomed ]; then
+  clear
+  echo "╔═══════════════════════════════════════════════════════════╗"
+  echo "║                   ParchLinux ARM                          ║"
+  echo "║                                                           ║"
+  echo "║  Welcome! You are logged in as: parch                    ║"
+  echo "║  Default password: parch                                  ║"
+  echo "║                                                           ║"
+  echo "║  ⚠️  SECURITY WARNING:                                    ║"
+  echo "║  Please change your password immediately:                 ║"
+  echo "║    $ passwd                                               ║"
+  echo "║                                                           ║"
+  echo "║  Quick Commands:                                          ║"
+  echo "║    update  - Update system                                ║"
+  echo "║    info    - Show system information                      ║"
+  echo "║                                                           ║"
+  echo "╚═══════════════════════════════════════════════════════════╝"
+  mkdir -p ~/.config
+  touch ~/.config/.welcomed
+fi
+EOF
+
+chown parch:parch /home/parch/.zshrc
+
+# ============================================
+# 8. SYSTEM MOTD
+# ============================================
+echo "==> Creating system MOTD..."
+cat <<'EOF' > /etc/motd
+╔═══════════════════════════════════════════════════════════╗
+║                   ParchLinux ARM                          ║
+║                                                           ║
+║  Default credentials:                                     ║
+║    Username: parch                                        ║
+║    Password: parch                                        ║
+║                                                           ║
+║  ⚠️  IMPORTANT: Change your password immediately!         ║
+║    $ passwd                                               ║
+║                                                           ║
+║  System Update: sudo pacman -Syu                          ║
+║  Documentation: https://parchlinux.ir                     ║
+╚═══════════════════════════════════════════════════════════╝
+EOF
+
+# ============================================
+# 9. ENABLE BASE SERVICES
+# ============================================
+echo "==> Enabling base services..."
+systemctl enable avahi-daemon
+systemctl enable NetworkManager
+systemctl enable bluetooth
+
+# ============================================
+# 10. OPTIMIZE FOR ARM
+# ============================================
+echo "==> Applying ARM optimizations..."
+
+# Increase swap if available
+if [ -f /etc/sysctl.d/99-swappiness.conf ]; then
+  rm /etc/sysctl.d/99-swappiness.conf
+fi
+echo "vm.swappiness=10" > /etc/sysctl.d/99-swappiness.conf
+
+# ============================================
+# 11. CLEANUP
+# ============================================
+echo "==> Cleaning up..."
+pacman -Sc --noconfirm
+rm -rf /var/cache/pacman/pkg/*
+rm -rf /tmp/*
+
+echo "==> Base profile configuration completed successfully!"
+echo "==> User 'parch' created with password 'parch'"
+echo "==> Default 'alarm' user removed"

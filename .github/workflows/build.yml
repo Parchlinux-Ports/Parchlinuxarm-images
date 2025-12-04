@@ -1,11 +1,32 @@
-# Adapted from https://github.com/andrewboring/alarm-images/blob/master/.github/workflows/build.yml
-
-name: Build Images
+# ParchLinux ARM Image Builder - Enhanced Workflow
+name: Build ARM Images
 
 on:
   release:
     types:
       - created
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: 'Architecture to build (or "all")'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - aarch64
+          - rpi-aarch64
+      flavor:
+        description: 'Flavor to build (or "all")'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - barebone
+          - xfce
+          - plasma
+          - trinity
 
 env:
   api_key: ${{ secrets.GITHUB_TOKEN }}
@@ -19,50 +40,261 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        arch: ['aarch64', 'rpi-aarch64']
-        flavor: ['barebone']
         include:
-        - arch: rpi-aarch64
-          flavor: xfce
+          # Standard aarch64 builds
+          - arch: 'aarch64'
+            flavor: 'barebone'
+          - arch: 'aarch64'
+            flavor: 'xfce'
+          - arch: 'aarch64'
+            flavor: 'plasma'
+          - arch: 'aarch64'
+            flavor: 'trinity'
+          
+          # Raspberry Pi specific builds
+          - arch: 'rpi-aarch64'
+            flavor: 'barebone'
+          - arch: 'rpi-aarch64'
+            flavor: 'xfce'
+          - arch: 'rpi-aarch64'
+            flavor: 'plasma'
+          - arch: 'rpi-aarch64'
+            flavor: 'trinity'
 
-
-        
+    name: Build ${{ matrix.arch }}-${{ matrix.flavor }}
+    
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    
     - name: Configure Git user
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
+    
     - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y parted wget dosfstools zip arch-install-scripts aria2 gh git
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          parted \
+          wget \
+          dosfstools \
+          zip \
+          arch-install-scripts \
+          aria2 \
+          gh \
+          git \
+          rsync \
+          sshpass \
+          qemu-user-static \
+          binfmt-support
+    
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
       with:
         platforms: arm,arm64
+    
+    - name: Set environment variables
+      run: |
+        echo "IMAGE_DATE=$(date '+%Y-%m-%d')" >> $GITHUB_ENV
+        echo "IMAGE_VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+        
+        # Determine remote directory based on release type
+        if [[ "${GITHUB_REF_NAME}" == *"beta"* ]]; then
+          echo "REMOTE_DIR=/srv/http/beta/${{ matrix.arch }}/${{ matrix.flavor }}/" >> $GITHUB_ENV
+        else
+          echo "REMOTE_DIR=/srv/http/${{ matrix.arch }}/${{ matrix.flavor }}/" >> $GITHUB_ENV
+        fi
+    
+    - name: Prepare build scripts
+      run: |
+        chmod +x create-image
+        chmod +x setup/*
+        
+        # Ensure base profile exists (required for all builds)
+        if [ ! -f "setup/base" ]; then
+          echo "ERROR: Base profile (setup/base) not found!"
+          echo "The base profile is required for all builds."
+          exit 1
+        fi
+        
+        echo "✓ Base profile found"
+        echo "✓ Build scripts ready"
+    
     - name: Build image
       shell: bash
       run: |
+        echo "Building image for ${{ matrix.arch }}-${{ matrix.flavor }}"
+        
+        # Note: create-image automatically includes setup/base first
+        # We only need to pass the flavor-specific setup
         scripts=()
-        for script_name in "${{ matrix.arch }}" "${{ matrix.flavor }}" "${{ matrix.arch }}-${{ matrix.flavor }}"; do
-          script_path="setup/$script_name"
-          if [ -f "$script_path" ]; then
-            scripts+=("$script_path")
-          fi
-        done
+        
+        # Add flavor-specific setup
+        if [ -f "setup/${{ matrix.flavor }}" ]; then
+          scripts+=("setup/${{ matrix.flavor }}")
+        fi
+        
+        # Add combined arch-flavor setup if exists
+        if [ -f "setup/${{ matrix.arch }}-${{ matrix.flavor }}" ]; then
+          scripts+=("setup/${{ matrix.arch }}-${{ matrix.flavor }}")
+        fi
+        
+        echo "Additional setup scripts (base and arch are automatic): ${scripts[@]}"
+        
+        # Create image (size: 9GB for all builds)
+        # Base profile and architecture setup are automatically included
         sudo ./create-image 9G ${{ matrix.arch }} "${scripts[@]}"
-    - name: Rename image
-      id: rename-image
+    
+    - name: Rename and prepare image
+      id: prepare-image
       run: |
         image_in_name="archlinux-${{ matrix.arch }}.img"
-        image_out_name="Parchlinux-${{ matrix.arch }}-${{ matrix.flavor }}-$(date '+%Y-%m-%d').img"
+        image_out_name="ParchLinux-${{ matrix.arch }}-${{ matrix.flavor }}-${IMAGE_DATE}.img"
+        
+        # Rename image
         mv "$image_in_name" "$image_out_name"
+        
+        # Create output directory
+        mkdir -p out
+        
         echo "image_name=$image_out_name" >> "$GITHUB_OUTPUT"
+        echo "IMAGE_NAME=$image_out_name" >> $GITHUB_ENV
+    
     - name: Compress image
       run: | 
-          mkdir image_parts
-          zip -s 2000m "image_parts/${{ steps.rename-image.outputs.image_name }}.zip" "${{ steps.rename-image.outputs.image_name }}"
-    - name: Upload image
+        echo "Compressing image into 2GB parts..."
+        zip -s 2000m "out/${IMAGE_NAME}.zip" "${IMAGE_NAME}"
+        
+        # List created files
+        ls -lh out/
+    
+    - name: Generate checksums
       run: |
-           sha256sum image_parts/* > image_parts/sha256sums.${{ matrix.arch }}.${{ matrix.flavor }}.txt
-           gh release upload ${{ github.event.release.tag_name }} ./image_parts/* -R ${{ github.repository }}
+        cd out
+        
+        # Generate SHA256 checksums
+        sha256sum * > sha256sum.txt
+        
+        # Generate MD5 checksums
+        md5sum * > md5sum.txt
+        
+        # Create a build info file
+        cat > build-info.txt <<EOF
+        ParchLinux ARM Image Build Information
+        ======================================
+        
+        Image: ${IMAGE_NAME}
+        Architecture: ${{ matrix.arch }}
+        Flavor: ${{ matrix.flavor }}
+        Build Date: ${IMAGE_DATE}
+        Version: ${IMAGE_VERSION}
+        Commit: ${GITHUB_SHA}
+        
+        Default Credentials:
+        Username: parch
+        Password: parch
+        
+        ⚠️  IMPORTANT: Change the default password after first login!
+        
+        Installation:
+        1. Extract the zip file: unzip ${IMAGE_NAME}.zip
+        2. Flash to SD card: sudo dd if=${IMAGE_NAME} of=/dev/sdX bs=4M status=progress
+        3. Boot your device and login with credentials above
+        
+        Documentation: https://parchlinux.ir
+        EOF
+        
+        cd ..
+    
+    - name: Upload to GitHub Release
+      if: github.event_name == 'release'
+      run: |
+        echo "Uploading to GitHub Release: ${GITHUB_REF_NAME}"
+        gh release upload ${GITHUB_REF_NAME} ./out/* -R ${{ github.repository }} || true
+    
+    - name: Deploy to Server via rsync
+      if: ${{ secrets.HOST != '' && secrets.PASS != '' }}
+      env:
+        PASS: ${{ secrets.PASS }}
+        HOST: ${{ secrets.HOST }}
+        REMOTE_DIR: ${{ env.REMOTE_DIR }}
+      run: |
+        echo "Deploying to $REMOTE_DIR on $HOST"
+        
+        # Create remote directory and clean old builds
+        sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no parch@$HOST \
+          "rm -rf $REMOTE_DIR && mkdir -p $REMOTE_DIR"
+        
+        # Upload files via rsync
+        sshpass -p "$PASS" rsync -avz --progress \
+          out/ParchLinux-${{ matrix.arch }}-${{ matrix.flavor }}-*.img.* \
+          out/sha256sum.txt \
+          out/md5sum.txt \
+          out/build-info.txt \
+          parch@$HOST:$REMOTE_DIR
+        
+        echo "✅ Successfully deployed to server!"
+    
+    - name: Create latest symlink on server
+      if: ${{ secrets.HOST != '' && secrets.PASS != '' && !contains(github.ref_name, 'beta') }}
+      env:
+        PASS: ${{ secrets.PASS }}
+        HOST: ${{ secrets.HOST }}
+        REMOTE_DIR: ${{ env.REMOTE_DIR }}
+      run: |
+        sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no parch@$HOST \
+          "cd $REMOTE_DIR && \
+           ln -sf ParchLinux-${{ matrix.arch }}-${{ matrix.flavor }}-${IMAGE_DATE}.img.zip \
+           ParchLinux-${{ matrix.arch }}-${{ matrix.flavor }}-latest.zip"
+    
+    - name: Cleanup build artifacts
+      if: always()
+      run: |
+        sudo rm -f *.img
+        sudo rm -rf out
+        sudo rm -rf mnt
+        sudo rm -f ArchLinuxARM-*.tar.gz
+    
+    - name: Upload build artifacts (for workflow_dispatch)
+      if: github.event_name == 'workflow_dispatch'
+      uses: actions/upload-artifact@v3
+      with:
+        name: ParchLinux-${{ matrix.arch }}-${{ matrix.flavor }}-${{ env.IMAGE_DATE }}
+        path: out/*
+        retention-days: 7
+
+  notify:
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Build Summary
+      run: |
+        echo "## ParchLinux ARM Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Release:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Date:** $(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_STEP_SUMMARY
+        echo "**Status:** ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.build.result }}" == "success" ]; then
+          echo "✅ All images built successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Available Images:" >> $GITHUB_STEP_SUMMARY
+          echo "- ParchLinux-aarch64-barebone" >> $GITHUB_STEP_SUMMARY
+          echo "- ParchLinux-aarch64-xfce" >> $GITHUB_STEP_SUMMARY
+          echo "- ParchLinux-aarch64-plasma" >> $GITHUB_STEP_SUMMARY
+          echo "- ParchLinux-aarch64-trinity" >> $GITHUB_STEP_SUMMARY
+          echo "- ParchLinux-rpi-aarch64-barebone" >> $GITHUB_STEP_SUMMARY
+          echo "- ParchLinux-rpi-aarch64-xfce" >> $GITHUB_STEP_SUMMARY
+          echo "- ParchLinux-rpi-aarch64-plasma" >> $GITHUB_STEP_SUMMARY
+          echo "- ParchLinux-rpi-aarch64-trinity" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Build failed! Check logs for details." >> $GITHUB_STEP_SUMMARY
+        fi
+    
+

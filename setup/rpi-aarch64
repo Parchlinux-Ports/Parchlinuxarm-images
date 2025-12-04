@@ -1,8 +1,133 @@
 #!/bin/bash
+# Raspberry Pi specific configuration
+# Applied after base, before desktop environment
 
 set -uo pipefail
 
-# Replace default kernel + U-Boot with Raspberry Pi foundation's kernel + bootloader
-# See https://github.com/fwcd/archlinuxarm-images/issues/3
-pacman -R --noconfirm linux-aarch64 uboot-raspberrypi
-pacman -Syu --noconfirm --needed linux-rpi raspberrypi-bootloader raspberrypi-utils
+echo "==> Applying Raspberry Pi specific configuration..."
+
+# Remove generic ARM kernel and bootloader
+echo "==> Removing generic ARM kernel..."
+pacman -R --noconfirm linux-aarch64 uboot-raspberrypi 2>/dev/null || true
+
+# Install Raspberry Pi specific kernel and bootloader
+echo "==> Installing Raspberry Pi kernel and bootloader..."
+rpi_packages=(
+  linux-rpi
+  linux-rpi-headers
+  raspberrypi-bootloader
+  raspberrypi-utils
+  raspberrypi-firmware
+)
+
+pacman -S --noconfirm --needed "${rpi_packages[@]}"
+
+# Configure boot parameters for Raspberry Pi
+echo "==> Configuring boot parameters..."
+
+# Add memory cgroup support for container workloads (K3s, Docker, etc.)
+if [ -f /boot/cmdline.txt ]; then
+  if ! grep -q "cgroup_memory=1" /boot/cmdline.txt; then
+    sed -i '$ s/$/ cgroup_memory=1 cgroup_enable=memory/' /boot/cmdline.txt
+    echo "Added cgroup support to boot parameters"
+  fi
+fi
+
+# Configure config.txt for optimal performance
+if [ -f /boot/config.txt ]; then
+  echo "==> Optimizing Raspberry Pi configuration..."
+  
+  # Backup original config
+  cp /boot/config.txt /boot/config.txt.backup
+  
+  # Add performance optimizations
+  cat <<'EOF' >> /boot/config.txt
+
+# ParchLinux ARM Optimizations for Raspberry Pi
+# ==============================================
+
+# GPU Memory (adjust based on use case)
+# 128MB for desktop, 64MB for headless
+gpu_mem=128
+
+# Enable audio
+dtparam=audio=on
+
+# Enable hardware video decode
+gpu_mem=128
+
+# Overclock (safe defaults - adjust as needed)
+# Raspberry Pi 4/400
+over_voltage=2
+arm_freq=1750
+
+# Enable 64-bit mode
+arm_64bit=1
+
+# USB boot optimization
+program_usb_boot_mode=1
+
+# Disable camera LED if not needed (saves power)
+disable_camera_led=1
+
+# Enable fan control (if you have a fan)
+dtoverlay=gpio-fan,gpiopin=14,temp=60000
+
+# Network optimizations
+dtoverlay=disable-wifi
+dtoverlay=disable-bt
+
+# To enable WiFi and Bluetooth, comment out the above two lines
+EOF
+fi
+
+# Configure WiFi regulatory domain (if WiFi is enabled)
+if [ -f /etc/conf.d/wireless-regdom ]; then
+  echo "==> Setting wireless regulatory domain..."
+  sed -i 's/#WIRELESS_REGDOM="US"/WIRELESS_REGDOM="US"/' /etc/conf.d/wireless-regdom
+fi
+
+# Enable hardware random number generator
+if [ -c /dev/hwrng ]; then
+  echo "==> Enabling hardware RNG..."
+  pacman -S --noconfirm --needed rng-tools
+  systemctl enable rngd
+fi
+
+# Create Raspberry Pi specific info file
+cat <<'EOF' > /etc/rpi-info
+This is a ParchLinux ARM image optimized for Raspberry Pi.
+
+Hardware Support:
+- Raspberry Pi 3 Model B/B+
+- Raspberry Pi 4 Model B
+- Raspberry Pi 400
+- Raspberry Pi Zero 2 W
+
+Features:
+- Container support (Docker, K3s) via cgroups
+- Hardware video acceleration
+- Optimized boot configuration
+- WiFi and Bluetooth support
+- GPIO support
+
+Useful commands:
+- vcgencmd: Query VideoCore information
+  Example: vcgencmd measure_temp
+  
+- raspi-config: Raspberry Pi configuration tool
+  (Install with: sudo pacman -S raspi-config)
+
+- dtoverlay: Device tree overlay management
+
+Performance tuning:
+- Edit /boot/config.txt for overclocking
+- Edit /boot/cmdline.txt for kernel parameters
+
+For more information:
+https://parchlinux.ir/wiki/raspberry-pi
+EOF
+
+echo "==> Raspberry Pi configuration completed!"
+echo "==> Installed Raspberry Pi kernel and bootloader"
+echo "==> Configured boot parameters for optimal performance"
