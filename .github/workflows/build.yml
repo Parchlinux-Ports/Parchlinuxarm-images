@@ -211,7 +211,7 @@ jobs:
         cd ..
     
     - name: Upload to GitHub Release
-      if: ${{ github.event_name == 'release' && (github.event_name != 'workflow_dispatch' || ( (github.event.inputs.arch == 'all' || github.event.inputs.arch == matrix.arch) && (github.event.inputs.flavor == 'all' || github.event.inputs.flavor == matrix.flavor) ) ) }}
+      if: ${{ github.event_name == 'release' }}
       run: |
         echo "Uploading to GitHub Release: ${GITHUB_REF_NAME}"
         gh release upload ${GITHUB_REF_NAME} ./out/* -R ${{ github.repository }} || true
@@ -270,8 +270,8 @@ jobs:
         sudo rm -f ArchLinuxARM-*.tar.gz
     
     - name: Upload build artifacts (for workflow_dispatch)
-      if: ${{ github.event_name == 'workflow_dispatch' && (github.event_name != 'workflow_dispatch' || ( (github.event.inputs.arch == 'all' || github.event.inputs.arch == matrix.arch) && (github.event.inputs.flavor == 'all' || github.event.inputs.flavor == matrix.flavor) ) ) }}
-      uses: actions/upload-artifact@v3
+      if: ${{ github.event_name == 'workflow_dispatch' && ( (github.event.inputs.arch == 'all' || github.event.inputs.arch == matrix.arch) && (github.event.inputs.flavor == 'all' || github.event.inputs.flavor == matrix.flavor) ) }}
+      uses: actions/upload-artifact@v4
       with:
         name: ParchLinux-${{ matrix.arch }}-${{ matrix.flavor }}-${{ env.IMAGE_DATE }}
         path: out/*
