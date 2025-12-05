@@ -37,13 +37,6 @@ xfce_packages=(
   vlc
   mpv
   
-  # Graphics
-  gimp
-  inkscape
-  
-  # Office (lightweight)
-  libreoffice-fresh
-  
   # Fonts
   ttf-dejavu
   ttf-liberation

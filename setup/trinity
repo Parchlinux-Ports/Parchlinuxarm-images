@@ -50,13 +50,6 @@ trinity_packages=(
   # Media players
   vlc
   
-  # Office suite
-  libreoffice-fresh
-  
-  # Graphics
-  gimp
-  inkscape
-  
   # Archive support
   p7zip
   unrar

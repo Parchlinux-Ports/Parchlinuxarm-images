@@ -112,7 +112,10 @@ base_packages=(
   # System essentials
   base-devel
   arch-install-scripts
-  
+
+  # Fix XORG Problem
+  rpi-xorg-config
+
   # ParchLinux branding
   parch-branding
   vazirmatn-fonts
@@ -152,14 +155,12 @@ base_packages=(
   
   # Package management
   pacman-contrib
-  yay-bin
   
   # Python
   python
   python-pip
   
   # Utilities
-  man-db
   tree
   unzip
   p7zip
