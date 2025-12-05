@@ -113,9 +113,6 @@ base_packages=(
   base-devel
   arch-install-scripts
 
-  # Fix XORG Problem
-  rpi-xorg-config
-
   # ParchLinux branding
   parch-branding
   vazirmatn-fonts

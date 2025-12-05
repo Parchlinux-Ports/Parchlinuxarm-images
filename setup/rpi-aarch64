@@ -13,6 +13,9 @@ pacman -R --noconfirm linux-aarch64 uboot-raspberrypi 2>/dev/null || true
 # Install Raspberry Pi specific kernel and bootloader
 echo "==> Installing Raspberry Pi kernel and bootloader..."
 rpi_packages=(
+  # Fix XORG Problem
+  rpi-xorg-config
+
   linux-rpi
   linux-rpi-headers
   raspberrypi-bootloader
