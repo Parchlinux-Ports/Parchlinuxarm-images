@@ -84,39 +84,23 @@ SigLevel = Never
 
 [core]
 # Primary mirrors (faster alternatives)
-Server = https://de.mirror.archlinuxarm.org/$arch/$repo
-Server = https://fl.us.mirror.archlinuxarm.org/$arch/$repo
-Server = https://uk.mirror.archlinuxarm.org/$arch/$repo
-# Fallback (original mirror disabled due to slow speeds)
-# Server = http://mirror.archlinuxarm.org/$arch/$repo
+Server = https://ftp.halifax.rwth-aachen.de/archlinux-arm/$arch/$repo
 SigLevel = Never
 
 [extra]
-Server = https://de.mirror.archlinuxarm.org/$arch/$repo
-Server = https://fl.us.mirror.archlinuxarm.org/$arch/$repo
-Server = https://uk.mirror.archlinuxarm.org/$arch/$repo
-# Server = http://mirror.archlinuxarm.org/$arch/$repo
+Server = https://ftp.halifax.rwth-aachen.de/archlinux-arm/$arch/$repo
 SigLevel = Never
 
 [community]
-Server = https://de.mirror.archlinuxarm.org/$arch/$repo
-Server = https://fl.us.mirror.archlinuxarm.org/$arch/$repo
-Server = https://uk.mirror.archlinuxarm.org/$arch/$repo
-# Server = http://mirror.archlinuxarm.org/$arch/$repo
+Server = https://ftp.halifax.rwth-aachen.de/archlinux-arm/$arch/$repo
 SigLevel = Never
 
 [alarm]
-Server = https://de.mirror.archlinuxarm.org/$arch/$repo
-Server = https://fl.us.mirror.archlinuxarm.org/$arch/$repo
-Server = https://uk.mirror.archlinuxarm.org/$arch/$repo
-# Server = http://mirror.archlinuxarm.org/$arch/$repo
+Server = https://ftp.halifax.rwth-aachen.de/archlinux-arm/$arch/$repo
 SigLevel = Never
 
 [aur]
-Server = https://de.mirror.archlinuxarm.org/$arch/$repo
-Server = https://fl.us.mirror.archlinuxarm.org/$arch/$repo
-Server = https://uk.mirror.archlinuxarm.org/$arch/$repo
-# Server = http://mirror.archlinuxarm.org/$arch/$repo
+Server = https://ftp.halifax.rwth-aachen.de/archlinux-arm/$arch/$repo
 SigLevel = Never
 EOF
 
