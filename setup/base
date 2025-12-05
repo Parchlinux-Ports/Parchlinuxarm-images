@@ -80,24 +80,43 @@ Server = https://repo.archlinuxcn.org/aarch64
 SigLevel = Never
 
 # Arch Linux ARM Official Repositories
+# Using faster mirrors instead of mirror.archlinuxarm.org
+
 [core]
-Server = http://mirror.archlinuxarm.org/$arch/$repo
+# Primary mirrors (faster alternatives)
+Server = https://de.mirror.archlinuxarm.org/$arch/$repo
+Server = https://fl.us.mirror.archlinuxarm.org/$arch/$repo
+Server = https://uk.mirror.archlinuxarm.org/$arch/$repo
+# Fallback (original mirror disabled due to slow speeds)
+# Server = http://mirror.archlinuxarm.org/$arch/$repo
 SigLevel = Never
 
 [extra]
-Server = http://mirror.archlinuxarm.org/$arch/$repo
+Server = https://de.mirror.archlinuxarm.org/$arch/$repo
+Server = https://fl.us.mirror.archlinuxarm.org/$arch/$repo
+Server = https://uk.mirror.archlinuxarm.org/$arch/$repo
+# Server = http://mirror.archlinuxarm.org/$arch/$repo
 SigLevel = Never
 
 [community]
-Server = http://mirror.archlinuxarm.org/$arch/$repo
+Server = https://de.mirror.archlinuxarm.org/$arch/$repo
+Server = https://fl.us.mirror.archlinuxarm.org/$arch/$repo
+Server = https://uk.mirror.archlinuxarm.org/$arch/$repo
+# Server = http://mirror.archlinuxarm.org/$arch/$repo
 SigLevel = Never
 
 [alarm]
-Server = http://mirror.archlinuxarm.org/$arch/$repo
+Server = https://de.mirror.archlinuxarm.org/$arch/$repo
+Server = https://fl.us.mirror.archlinuxarm.org/$arch/$repo
+Server = https://uk.mirror.archlinuxarm.org/$arch/$repo
+# Server = http://mirror.archlinuxarm.org/$arch/$repo
 SigLevel = Never
 
 [aur]
-Server = http://mirror.archlinuxarm.org/$arch/$repo
+Server = https://de.mirror.archlinuxarm.org/$arch/$repo
+Server = https://fl.us.mirror.archlinuxarm.org/$arch/$repo
+Server = https://uk.mirror.archlinuxarm.org/$arch/$repo
+# Server = http://mirror.archlinuxarm.org/$arch/$repo
 SigLevel = Never
 EOF
 
