@@ -7,7 +7,6 @@ sed -i 's/#\(en_US.UTF-8 UTF-8\)/\1/g' /etc/locale.gen
 locale-gen
 echo 'LANG=en_US.UTF-8' > /etc/locale.conf
 
-
 # Fix Pacman.conf
 rm -f /etc/pacman.conf
 curl https://raw.githubusercontent.com/parchlinux-ports/Parchlinuxarm-images/main/examples/pacman.conf.example >> /etc/pacman.conf
@@ -15,32 +14,40 @@ curl https://raw.githubusercontent.com/parchlinux-ports/Parchlinuxarm-images/mai
 # Enable Sudo
 sudo sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
-pacman-key --recv-keys 0x8685AD8B
-
-# Add archsink repo
-cat <<EOF >> /etc/pacman.conf
-
-[trinity]
-Server = https://mirror.ppa.trinitydesktop.org/trinity/archlinux/\$arch
-SigLevel = Never
-
-EOF
-
-# Enable parallel downloads
-sed -i 's/#\(ParallelDownloads \)/\1/g' /etc/pacman.conf
-
-# Install useful packages
+# Install Desktop and Apps
 packages=(
+  plasma-bigscreen
+  plasma-login-manager
+  breeze
+  breeze-gtk
+  kscreen
+  kscreenlocker
+  kwayland
+  kwin
+  kwallet-pam
+  libplasma
+  plasma-activities
+  plasma-activities-stats
+  plasma-integration
+  plasma-nm
+  plasma-pa
+  plasma-systemmonitor
+  plasma-workspace
+  plasma5support
+  polkit-kde-agent
+  powerdevil
+  xdg-desktop-portal-kde
+  konsole
+  parch-zram
   parch-branding
+  noto-fonts
   vazirmatn-fonts
   parch-emoji-ios
   arch-install-scripts
   avahi
   curl
   git
-  htop
   btop
-  iwd
   man-db
   neovim
   pacman-contrib
@@ -48,31 +55,40 @@ packages=(
   python
   rsync
   sudo
-  tmux
   tree
+  fastfetch
   neofetch-git
-  zsh
-  vim
-  tde-tdebase
-  sddm
   networkmanager
   network-manager-applet
-  fastfetch
+  zsh
+  vim
   pipewire
   pipewire-pulse
-  pipewire-alsa
-  wireplumber
   bluez
   bluez-utils
+  pipewire-alsa
+  wireplumber
+  rpi-xorg-config
 )
 pacman -Syu --noconfirm --needed "${packages[@]}"
 
 # Enable services
 systemctl enable avahi-daemon NetworkManager
-systemctl enable sddm
+systemctl enable plasmalogin
 systemctl enable bluetooth
-# Prepare system for containers (e.g. for use with K3s)
-# https://github.com/k3s-io/k3s/issues/2067#issuecomment-664048424
-#if ! grep -q cgroup /boot/cmdline.txt; then
-#  sed -i '$ s/$/ cgroup_memory=1 cgroup_enable=memory/g' /boot/cmdline.txt
-#fi
+systemctl enable parch-zram
+
+# Set hostname
+echo "ParchPi" > /etc/hostname
+
+# Create parch user and set password
+useradd -m -G wheel -s /bin/zsh parch
+echo "parch:parch" | chpasswd
+
+# Remove default alarm user
+userdel -r alarm || true
+
+# Set root password
+echo "root:root" | chpasswd
+
+

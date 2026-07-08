@@ -14,11 +14,6 @@ curl https://raw.githubusercontent.com/parchlinux-ports/Parchlinuxarm-images/mai
 # Enable Sudo
 sudo sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
-# Fix sddm Theming
-
-mkdir -p /etc/sddm.conf.d/
-curl https://raw.githubusercontent.com/parchlinux/parch-iso-plasma/main/iso/airootfs/etc/sddm.conf.d/kde_settings.conf >> /etc/sddm.conf.d/kde_settings.conf
-
 # Install Desktop and Apps
 packages=(
   bluedevil
@@ -65,6 +60,7 @@ packages=(
   plasma-thunderbolt
   plasma-vault
   plasma-workspace
+  plasma-login-manager
   plasma-workspace-wallpapers
   plasma5support
   plymouth-kcm
@@ -72,7 +68,6 @@ packages=(
   powerdevil
   print-manager
   qqc2-breeze-style
-  sddm-kcm
   systemsettings
   wacomtablet
   xdg-desktop-portal-kde
@@ -82,7 +77,6 @@ packages=(
   gwenview
   okular
   parch-zram
-  sddm
   parch-branding
   noto-fonts
   vazirmatn-fonts
@@ -112,14 +106,29 @@ packages=(
   bluez-utils
   pipewire-alsa
   wireplumber
+  rpi-xorg-config
 )
 pacman -Syu --noconfirm --needed "${packages[@]}"
 
 # Enable services
 systemctl enable avahi-daemon NetworkManager
-systemctl enable sddm
+systemctl enable plasmalogin
 systemctl enable bluetooth
 systemctl enable parch-zram
+
+# Set hostname
+echo "ParchPi" > /etc/hostname
+
+# Create parch user and set password
+useradd -m -G wheel -s /bin/zsh parch
+echo "parch:parch" | chpasswd
+
+# Remove default alarm user
+userdel -r alarm || true
+
+# Set root password
+echo "root:root" | chpasswd
+
 
 
 # Prepare system for containers (e.g. for use with K3s)

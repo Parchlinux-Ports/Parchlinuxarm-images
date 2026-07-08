@@ -24,7 +24,9 @@ jobs:
         flavor: ['barebone']
         include:
         - arch: rpi-aarch64
-          flavor: xfce
+          flavor: plasma
+        - arch: rpi-aarch64
+          flavor: plasma-bigscreen
 
 
         
