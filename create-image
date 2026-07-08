@@ -86,6 +86,9 @@ tar -xpf "${file}" -C "${mount}" 2> >(grep -v "Ignoring unknown extended header 
 echo "==> Installing overlay tree to image..."
 rsync -rlDvP "$(dirname $0)/overlay/" "${mount}/"
 
+echo "==> Disabling pacman sandbox for QEMU chroot compatibility..."
+sed -i '/^\[options\]/a DisableSandbox' "${mount}/etc/pacman.conf"
+
 echo "==> Setting up pacman keyring..."
 cat <<EOF | arch-chroot "${mount}"
 pacman-key --init
