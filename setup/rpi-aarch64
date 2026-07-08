@@ -2,6 +2,9 @@
 
 set -uo pipefail
 
+# Disable pacman sandbox (Landlock unsupported in QEMU chroot)
+sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
+
 # Replace default kernel + U-Boot with Raspberry Pi foundation's kernel + bootloader
 # See https://github.com/fwcd/archlinuxarm-images/issues/3
 pacman -R --noconfirm linux-aarch64 uboot-raspberrypi
